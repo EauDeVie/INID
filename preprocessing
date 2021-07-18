@@ -1,0 +1,83 @@
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import cross_val_score
+from sklearn.svm import LinearSVC
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.linear_model import LinearRegression
+from sklearn.preprocessing import LabelEncoder
+from sklearn.svm import SVC
+from sklearn.gaussian_process import GaussianProcessClassifier
+from sklearn.pipeline import Pipeline
+import category_encoders as ce
+
+pd.set_option('max_colwidth', 25)
+pd.set_option('max_rows', 200)
+
+
+
+data = pd.read_csv('/Users/vinogradovdmitrii/Downloads/Investments_regions_31122018/data.csv', delimiter=';',
+                    low_memory=False).rename(
+     columns={'Регион': 'region', 'Год': 'year', 'Параметр': 'parms', 'CEPA':'cepa',
+              'Классификатор видов экономической деятельности (ОКВЭД)': 'okved', 'Источники финансирования': 'sof',
+              'Значение': 'value'}).drop(labels='Сектора деятельности', axis=1)
+
+data = data.drop_duplicates()
+
+#  Избавляемся от ОКВЭД (переводим оквэд в названия классов данных оквэд)
+data.loc[(data.okved.str.contains('ОКВЭД_37')) | (data.okved.str.contains('ОКВЭД_38')) & ~ (data.okved.isna() ==
+True),
+'okved'] = 'Водоснабжение; водоотведение, организация сбора и утилизации отходов, деятельность по ликвидации ' \
+            'загрязнений'
+data.loc[(data.okved.str.contains('ОКВЭД_35')) & ~ (data.okved.isna() == True), 'okved'] = 'Обеспечение электрической энергией, газом и паром; кондиционирование воздуха'
+data.loc[(data.okved.str.contains('ОКВЭД_49')) & ~ (data.okved.isna() == True), 'okved'] = 'Транспортировка и хранение'
+data.loc[(data.okved.str.contains('ОКВЭД_05')) | (data.okved.str.contains('ОКВЭД_07')) & ~ (data.okved.isna() ==
+True), 'okved'] = 'Добыча полезных ископаемых'
+data.loc[(data.okved.str.contains('ОКВЭД_2')) | (data.okved.str.contains('ОКВЭД_1')) | (data.okved.str.contains(
+'ОКВЭД_31')) & ~ (data.okved.isna() == True), 'okved'] = 'Обрабатывающие производства'
+data.loc[(data.okved.str.contains('ОКВЭД_01')) & ~ (data.okved.isna() == True), 'okved'] = 'Сельское, лесное хозяйство, охота, рыболовство и рыбоводство'
+data.loc[(data.okved.str.contains('ОКВЭД_69')) & ~ (data.okved.isna() == True), 'okved'] = 'Деятельность профессиональная, научная и техническая'
+
+
+# Создадим полностью заполненный датафрейм, на основе которого обучим модель и предскажем недостающие значения в
+# каждом столбце
+data_new = data[(data.cepa.isna() == False) & (data.okved.isna() == False) & (data.sof.isna() == False)].reset_index()
+data_new.to_csv('data_new2.csv', index=False)
+
+
+
+
+df = pd.read_csv('data_new2.csv').drop(labels=['index'], axis=1)
+df['year'] = df.year.astype(str)
+df['value'] = [x.replace(',', '.') for x in df['value']]
+
+df['value'] = df['value'].astype(float)
+df['value'] = np.sqrt(np.sqrt(df['value']))
+
+encoding_pipeline = Pipeline([('encode_cepa', ce.OneHotEncoder(cols=['cepa'], return_df=True)), ('encode_region',
+                    ce.JamesSteinEncoder(cols=['region'], return_df=True)), ('encode_year', ce.JamesSteinEncoder(cols=[
+    'year'], return_df=True)), ('encode_parms', ce.JamesSteinEncoder(cols=['parms'], return_df=True)), ('encode_okved',
+                    ce.CountEncoder(cols=['okved'], return_df=True),), ('encode_sof',
+                    ce.TargetEncoder(cols=['sof'], return_df=True))])
+
+df_encoding = encoding_pipeline.fit_transform(df, df['value'])
+# print(df_encoding)
+
+
+X = df_encoding.drop(columns=['okved'], axis=1)
+y = df_encoding['okved'].astype(int)
+
+# Посмотрим на корреляцию столбцов
+# def correl(X_train):
+#     cor = X_train.corr()
+#     c1 = cor.stack().sort_values(ascending=False).drop_duplicates()
+#     high_cor = c1[c1.values != 1]
+#     thresh = 0.1
+#     print(high_cor[high_cor > thresh])
+
+
+# Перед обучением модели проведем кроссвалидацию, метрику качества выбираем f1_weighted
+clf = GaussianProcessClassifier()
+score = cross_val_score(clf, X, y, scoring='f1_weighted', n_jobs=8, cv=6)
+print(score.mean())
+
+# Далее предсказываем значения для каждого столбца с Nan-значениями
