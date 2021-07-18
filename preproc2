@@ -1,0 +1,75 @@
+import pandas as pd
+from fuzzywuzzy import fuzz
+
+
+# Было два вариант парсинга, один из них запарсить просто таблицу с классами и оквэдами, где показаны лишь основные оквэды без подоквэдов
+# и по ним позже классифицировать, второй же вариант, запарсить полную таблицу со всеми существующими оквэдами и по ним позже классифицировать
+
+# Вариант 1
+table = pd.read_html('https://www.buxprofi.ru/spravochnik/okved-2', match='Раздел', skiprows=1)[0]
+table.to_csv('okved.csv', index=False)
+table = pd.read_csv('okved.csv').rename(columns={'0':'type', '1':'name'})
+print(table['name'].str.split('ОКВЭД')[0])
+table = table.assign(name=table['name'].str.split('ОКВЭД')).explode('name').reset_index().drop('index', axis=1)
+table['name'] = table['name'].apply(lambda x: x.strip(' Класс'))
+table['name'] = table['name'].apply(lambda x: re.sub("^\d+\s|\s\d+\s|\s\d+$", '', x))
+
+print(table.head())
+print(table)
+
+
+# Вариант 2
+table_new = pd.read_html('https://www.buxprofi.ru/spravochnik/tablica-sootvetstvija-okved-i-okved-2')[1].drop([0, 1],
+                                                                     axis=1).rename(columns={2:'codes', 3: 'descrip'})
+table_new = table_new[2:]
+table_new.to_csv('table_new.csv', index=False)
+
+
+df_table = pd.read_csv('table_new.csv')
+print(df_table.head())
+df_table['codes'] = df_table['codes'].astype(str)
+df_table['codes'] = df_table['codes'].apply(lambda x: x.strip('.'))
+df_table['codes'] = df_table['codes'].apply(lambda x: x[0:2])
+df_table['codes'] = df_table['codes'].apply(lambda x: x.lstrip('0'))
+df_table = df_table.dropna().reset_index()
+df_table['codes'] = df_table['codes'].astype(int)
+# print(df_table)
+
+# Присваиваем оквэдам классы
+df_table['classes'] = 0
+df_table.loc[df_table.codes <= 3, 'classes'] = 'A'
+df_table.loc[(df_table.codes > 3) & (df_table.codes <= 9), 'classes'] = 'B'
+df_table.loc[(df_table.codes > 9) & (df_table.codes <= 33), 'classes'] = 'C'
+df_table.loc[(df_table.codes > 33) & (df_table.codes <= 35), 'classes'] = 'D'
+df_table.loc[(df_table.codes > 35) & (df_table.codes <= 39), 'classes'] = 'E'
+df_table.loc[(df_table.codes > 39) & (df_table.codes <= 43), 'classes'] = 'F'
+df_table.loc[(df_table.codes > 43) & (df_table.codes <= 47), 'classes'] = 'G'
+df_table.loc[(df_table.codes > 47) & (df_table.codes <= 53), 'classes'] = 'H'
+df_table.loc[(df_table.codes > 53) & (df_table.codes <= 56), 'classes'] = 'I'
+df_table.loc[(df_table.codes > 56) & (df_table.codes <= 63), 'classes'] = 'J'
+df_table.loc[(df_table.codes > 63) & (df_table.codes <= 66), 'classes'] = 'K'
+df_table.loc[(df_table.codes > 66) & (df_table.codes <= 68), 'classes'] = 'L'
+df_table.loc[(df_table.codes > 68) & (df_table.codes <= 75), 'classes'] = 'M'
+df_table.loc[(df_table.codes > 75) & (df_table.codes <= 82), 'classes'] = 'N'
+df_table.loc[(df_table.codes > 82) & (df_table.codes <= 84), 'classes'] = 'O'
+df_table.loc[(df_table.codes > 84) & (df_table.codes <= 85), 'classes'] = 'P'
+df_table.loc[(df_table.codes > 85) & (df_table.codes <= 88), 'classes'] = 'Q'
+df_table.loc[(df_table.codes > 88) & (df_table.codes <= 93), 'classes'] = 'R'
+df_table.loc[(df_table.codes > 93) & (df_table.codes <= 96), 'classes'] = 'S'
+df_table.loc[(df_table.codes > 96) & (df_table.codes <= 98), 'classes'] = 'T'
+df_table.loc[(df_table.codes > 98) & (df_table.codes <= 99), 'classes'] = 'U'
+
+
+# Не самый прекрасный вариант для обхода строк в таблице
+# Что мы делаем - проверяем строки на похожесть из двух таблиц и если степень похожести больше определенного значения, 
+# то присваиваем значение класса для основной таблицы и оквэдов
+
+for index1, row in data.iterrows():
+     # print(row)
+     for i in range(2140):
+         a = fuzz.token_sort_ratio(row['okved'], df_table['descrip'][i])
+
+         if a >= 80:
+             data.loc[data.index == index1, 'new_class'] = df_table['classes'][i]
+
+data.to_csv('new_inid_2.csv', index=False)
